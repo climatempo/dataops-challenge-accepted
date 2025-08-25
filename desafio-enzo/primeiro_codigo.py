@@ -30,22 +30,20 @@ def download_zip(year: int, out_dir: str):
     os.makedirs(out_dir, exist_ok=True)
     zip_path = os.path.join(out_dir, f"{year}.zip")
 
-   # Se já existe, não baixa de novo
     if os.path.exists(zip_path):
        print(f"[INFO] Arquivo {zip_path} já existe, pulando download.")
        return zip_path
 
     print(f"[INFO] Baixando {url} ...")
 
-   # Configura retries para evitar falhas de rede
     session = requests.Session()
     retries = Retry(total=5, backoff_factor=1, status_forcelist=[502, 503, 504])
     session.mount("https://", HTTPAdapter(max_retries=retries))
 
     response = session.get(url, stream=True, timeout=60)
     response.raise_for_status()
-
-   # Baixa em chunks para não pesar memória
+    
+    
     with open(zip_path, "wb") as f:
        for chunk in response.iter_content(chunk_size=1024*1024):
            if chunk:
@@ -53,14 +51,15 @@ def download_zip(year: int, out_dir: str):
 
     print(f"[INFO] Download concluído: {zip_path}")
     return zip_path
-    pass
 
 def extract_zip(zip_path: str, extract_to: str):
     """Extrai os arquivos de um ZIP para um diretório."""
+    
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    
         zip_ref.extractall(extract_to)
+    
     print(f"[INFO] Arquivos extraídos para: {extract_to}")
-
 
 def parse_station_code(filename: str) -> str:
     """Extrai o código da estação a partir do nome do arquivo CSV."""
@@ -73,24 +72,22 @@ def parse_station_code(filename: str) -> str:
   Returns:
       str: Código da estação (ex: A354) ou None se não encontrado.
   """
-  # pega apenas o nome do arquivo, sem pastas
     base = os.path.basename(filename)
 
-  # regex: uma letra maiúscula + 3 dígitos
     match = re.search(r"([A-Z]\d{3})", base)
     if match:
         return match.group(1)
 
     print(f"[WARN] Não foi possível extrair código da estação de: {base}")
     return None
-    pass
 
 def normalize_column(col: str) -> str:
     """Normaliza nomes de colunas: minúsculas, sem acentos, sem espaços extras."""
+    
     return unidecode(col.strip().lower().replace(" ", "_"))
 
 def process_station_file(csv_path: str, out_root: str, year: int):
-    """Processa um arquivo de estação e gera os CSVs de precipitação e temperatura."""
+    
     """
    Processa um arquivo bruto do INMET e gera CSVs de precipitação e temperatura.
 
@@ -99,7 +96,6 @@ def process_station_file(csv_path: str, out_root: str, year: int):
        out_root (str): Diretório raiz de saída.
        year (int): Ano do dado.
    """
-   # Nome da estação (código)
     station_code = parse_station_code(csv_path)
     if not station_code:
         print(f"[WARN] Código da estação não encontrado em {csv_path}")
@@ -107,7 +103,6 @@ def process_station_file(csv_path: str, out_root: str, year: int):
 
     print(f"[INFO] Processando estação {station_code} ({year})")
     
-    # Lê o CSV
     df = pd.read_csv(
         csv_path,
         sep=";",
@@ -118,25 +113,11 @@ def process_station_file(csv_path: str, out_root: str, year: int):
         on_bad_lines="skip"
     )
     
-    # Normaliza colunas
     df.columns = [normalize_column(c) for c in df.columns]
-
-    # Monta datetime
     df["hora"] = (df["hora_utc"].astype(str).str.zfill(4)).str[:2]  # pega só HH
-
-    # Concatena data + hora
     df["tempo"] = df["data"].str.strip() + " " + df["hora"]
-
-    # Converte para datetime (dia/mês/ano hora)
     df["datetime"] = pd.to_datetime(df["tempo"], format="%Y/%m/%d %H", errors="coerce")
-
-    # Remove inválidos
     df = df.dropna(subset=["datetime"])
-
-    # Define como índice
-    #df = df.set_index("datetime")
-
-    # Remove colunas auxiliares
     df.drop(columns=["data", "hora_utc", "hora", "tempo"],inplace=True)
 
     vars_map = {}
@@ -151,31 +132,17 @@ def process_station_file(csv_path: str, out_root: str, year: int):
 
         tmp = df[["datetime", col]].copy()
         tmp.columns = ["datetime", "value"]
-
-        # Converte valores
         tmp["value"] = pd.to_numeric(tmp["value"], errors="coerce")
-
-        # Remove inválidos
         tmp = tmp.dropna(subset=["value"])
         tmp = tmp.loc[~tmp["value"].isin([-9999])]
-
-        # Remove duplicatas (mantém primeiro)
         tmp = tmp.drop_duplicates(subset=["datetime"], keep="first")
-
-        # Cria diretório de saída
         out_dir = os.path.join(out_root, "inmet_stations", "processed", varname, str(year))
         os.makedirs(out_dir, exist_ok=True)
-
-        # Caminho final
         out_file = os.path.join(out_dir, f"{station_code}.csv")
-
         tmp.to_csv(out_file, index=False)
         print(f"[INFO] Gerado: {out_file}")
-    
-    pass
 
 def compute_completeness_for_year(year: int, out_root: str, variable: str):
-    """Calcula a completude dos arquivos processados e salva o relatório anual."""
     """
     Calcula a completude dos dados processados para todas as estações de um ano.
 
@@ -210,14 +177,13 @@ def compute_completeness_for_year(year: int, out_root: str, variable: str):
         if df.empty:
             results.append((station_code, 0.0))
             continue
-     # Calcula início e fim
+        
         start_dt = df["datetime"].min()
         end_dt = df["datetime"].max()
 
         expected_records = int((end_dt - start_dt).total_seconds() / 3600) + 1
         valid_records = df["value"].notna().sum()
 
-        # Evita divisões inválidas
         if expected_records <= 0:
             completeness = 0.0
         else:
@@ -225,16 +191,12 @@ def compute_completeness_for_year(year: int, out_root: str, variable: str):
 
         results.append((station_code, completeness))
 
-    # Monta DataFrame final
     out_df = pd.DataFrame(results, columns=["station_code", "completeness"])
 
-    # Caminho do relatório
     out_file = os.path.join(out_root, f"{variable}_{year}.csv")
     out_df.to_csv(out_file, sep=";", index=False)
 
     print(f"[INFO] Relatório gerado: {out_file}")
-    
-    pass
 
 def main():
     parser = argparse.ArgumentParser(description="Processador de dados INMET")
@@ -244,26 +206,21 @@ def main():
     parser.add_argument("--station-filter", type=str, default=None, help="Lista de estações específicas (separadas por vírgula)")
     args = parser.parse_args()
 
-    # Divide o filtro de estações em lista, se fornecido
     allowed_stations = None
     if args.station_filter:
         allowed_stations = [code.strip().upper() for code in args.station_filter.split(",")]
 
     for year in args.years:
-        # 1. Baixa o ZIP
         zip_path = download_zip(year, args.out_root)
-
-        # 2. Extrai o conteúdo
+        
         extract_dir = os.path.join(args.out_root, f"inmet_{year}")
         extract_zip(zip_path, extract_dir)
 
-        # 3. Processa cada CSV
         for fname in os.listdir(extract_dir):
             if not fname.lower().endswith(".csv"):
                 continue
             full_path = os.path.join(extract_dir, fname)
 
-            # Se tiver filtro por estação, verifica se deve processar
             if allowed_stations:
                 code = parse_station_code(fname)
                 if code not in allowed_stations:
@@ -271,7 +228,6 @@ def main():
 
             process_station_file(full_path, args.out_root, year)
 
-        # 4. Calcula completude por variável
         for var in ["total_precipitation", "2m_air_temperature"]:
             compute_completeness_for_year(year, args.out_root, var)
 
