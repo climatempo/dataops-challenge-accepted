@@ -115,12 +115,33 @@ def process_station_file(csv_path: str, out_root: str, year: int):
     )
     
     df.columns = [normalize_column(c) for c in df.columns]
+
+    rename_map = {
+        "data_(yyyy-mm-dd)": "data",
+        "data": "data",
+        "hora_(utc)": "hora_utc",
+        "hora_utc": "hora_utc"  
+        }
+    df.rename(columns={c: rename_map[c] for c in df.columns if c in rename_map}, inplace=True)
+    
+    if "data" not in df.columns or "hora_utc" not in df.columns:
+        print(f"[ERRO] Colunas de data/hora não encontradas em {csv_path}")
+        return
+    
     df["hora"] = (df["hora_utc"].astype(str).str.zfill(4)).str[:2]  # pega só HH
     df["tempo"] = df["data"].str.strip() + " " + df["hora"]
-    df["datetime"] = pd.to_datetime(df["tempo"], format="%Y/%m/%d %H", errors="coerce")
+    sample = df["tempo"].dropna().astype(str).iloc[0]
+
+    if "/" in sample:
+        df["datetime"] = pd.to_datetime(df["tempo"], format="%Y/%m/%d %H", errors="coerce")
+    elif "-" in sample:
+        df["datetime"] = pd.to_datetime(df["tempo"], format="%Y-%m-%d %H", errors="coerce")
+    else:
+        df["datetime"] = pd.to_datetime(df["tempo"], errors="coerce")
+    
     df = df.dropna(subset=["datetime"])
     df.drop(columns=["data", "hora_utc", "hora", "tempo"],inplace=True)
-
+    
     vars_map = {}
 
     for col in df.columns:
@@ -133,6 +154,7 @@ def process_station_file(csv_path: str, out_root: str, year: int):
 
         tmp = df[["datetime", col]].copy()
         tmp.columns = ["datetime", "value"]
+        tmp["value"] = tmp["value"].astype(str).str.replace(",", ".", regex=False)
         tmp["value"] = pd.to_numeric(tmp["value"], errors="coerce")
         tmp = tmp.dropna(subset=["value"])
         tmp = tmp.loc[~tmp["value"].isin([-9999])]
@@ -217,19 +239,22 @@ def main():
 
         extract_dir = os.path.join(args.out_root, f"inmet_{year}")
         extract_zip(zip_path, extract_dir)
-
+        
         files_to_process = []
-        for fname in os.listdir(extract_dir):
-            if not fname.lower().endswith(".csv"):
-                continue
-            full_path = os.path.join(extract_dir, fname)
-
-            if allowed_stations:
-                code = parse_station_code(fname)
-                if code not in allowed_stations:
+        
+        for root, dirs, files in os.walk(extract_dir):
+            for fname in files:
+                if not fname.lower().endswith(".csv"):
                     continue
 
-            files_to_process.append(full_path)
+                full_path = os.path.join(root, fname)
+
+                if allowed_stations:
+                    code = parse_station_code(fname)
+                    if code not in allowed_stations:
+                        continue
+
+                files_to_process.append(full_path)
 
         if args.workers > 1:
             with ProcessPoolExecutor(max_workers=args.workers) as executor:
