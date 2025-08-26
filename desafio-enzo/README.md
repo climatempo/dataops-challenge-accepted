@@ -1,71 +1,90 @@
 # Desafio Técnico - Climatempo
 
-Este repositório contém a solução para o **Desafio Técnico de DataOps da Climatempo**.  
-O objetivo é baixar, processar e calcular a completude de séries históricas de estações meteorológicas do INMET.
+Este repositório contém a solução desenvolvida para o desafio técnico da Climatempo.
 
----
+## Funcionalidades Implementadas
 
-## Dependências
-
-As bibliotecas necessárias estão listadas em `requirements.txt`.
-
-Instale com:
-
-```bash
-pip install -r requirements.txt
-```
----
+- Download automático dos dados históricos do INMET (arquivos ZIP por ano).
+- Extração dos arquivos CSV do ZIP baixado.
+- Processamento dos arquivos de estação, com:
+  - Normalização das colunas.
+  - Conversão de datas e horas para formato `datetime`.
+  - Extração das variáveis:
+    - Precipitação horária.
+    - Temperatura do ar (bulbo seco).
+  - Remoção de valores inválidos (-9999).
+  - Geração de arquivos CSV processados, organizados por variável e ano.
+- Cálculo da **completude** (percentual de registros válidos em relação ao esperado).
+- Suporte a múltiplos anos e múltiplas estações.
+  - É possível processar várias estações em paralelo, acelerando a execução.
+  - O parâmetro `--workers` define o número de processos em paralelo.
+  - Exemplo: `--workers 4` utiliza até 4 processos simultâneos.
 
 ## Como executar
 
-O script principal é `primeiro_codigo.py`.
+### Requisitos
+- Python 3.8+
+- Instalar dependências:
+  ```bash
+  pip install -r requirements.txt
+  ```
 
-Exemplo de execução:
+### Uso
 
-python primeiro_codigo.py --years 2024 2025 --out-root ./data
+Rodar o script principal:
+```bash
+python desafio.py --years 2024 2025 --out-root ./data --workers 4
+```
 
-### Parâmetros disponíveis
-- `--years` : anos a processar (ex: `2024 2025`)
-- `--out-root` : diretório raiz de saída (onde os arquivos vão estar)
-- `--station-filter` : lista de códigos de estação selecionados, precisam estar separados por vírgula (opcional)
-- `--workers` : número de workers (paralelismo, ainda não implementado)
+Parâmetros:
+- `--years` → anos a serem processados (um ou mais).
+- `--out-root` → diretório onde salvar os arquivos processados.
+- `--workers` → número de processos em paralelo (default = 1, ou seja, sequencial).
+- `--station-filter` → (opcional) lista de códigos de estações, separadas por vírgula.
+
+### Exemplos
+
+1. Processar um único ano de forma sequencial:
+```bash
+python desafio.py --years 2024 --out-root ./data
+```
+
+2. Processar dois anos com paralelismo (4 processos):
+```bash
+python desafio.py --years 2023 2024 --out-root ./data --workers 4
+```
+
+3. Processar apenas uma estação específica:
+```bash
+python desafio.py --years 2024 --out-root ./data --station-filter A301
+```
+
+## Estrutura de Saída
+
+```
+out-root/
+ └── inmet_stations/
+     └── processed/
+         ├── total_precipitation/
+         │   └── 2024/
+         │       └── A301.csv
+         └── 2m_air_temperature/
+             └── 2024/
+                 └── A301.csv
+ └── total_precipitation_2024.csv
+ └── 2m_air_temperature_2024.csv
+```
+
+## Relatórios de Completude
+
+Para cada variável e ano, é gerado um arquivo CSV contendo o código da estação e o percentual de completude dos dados.
+
+Exemplo (`total_precipitation_2024.csv`):
+```
+station_code;completeness
+A301;0.98
+A354;0.75
+```
 
 ---
-
-## Estrutura de saída
-
-Após a execução, os dados serão organizados em:
-
-### Dados processados
-```
-./data/inmet_stations/processed/total_precipitation/2025/A701.csv
-./data/inmet_stations/processed/2m_air_temperature/2025/A701.csv
-```
-
-### Relatórios de completude por estação
-```
-./data/total_precipitation_2025.csv
-./data/2m_air_temperature_2025.csv
-```
-
----
-
-## Exemplo prático
-
-Processar o ano de 2025 para duas estações específicas:
-
-python desafio.py --years 2025 --out-root ./data --station-filter A701,A354
-
-Isso irá:
-- Baixar o ZIP de 2025 do portal do INMET
-- Extrair e processar apenas as estações `A701` e `A354`
-- Gerar os CSVs normalizados
-- Criar o relatório de completude para 2025 nas duas variaveis
-
----
-
-## Tecnologias utilizadas
-- Python 3.9+
-- pandas
-- requests
-- unidecode
+📌 Desenvolvido por Enzo Gaddo para o processo seletivo Climatempo.
