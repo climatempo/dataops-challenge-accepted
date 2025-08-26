@@ -14,6 +14,7 @@ import re
 import pandas as pd
 from unidecode import unidecode
 import zipfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 def download_zip(year: int, out_dir: str):
@@ -211,11 +212,13 @@ def main():
         allowed_stations = [code.strip().upper() for code in args.station_filter.split(",")]
 
     for year in args.years:
-        zip_path = download_zip(year, args.out_root)
         
+        zip_path = download_zip(year, args.out_root)
+
         extract_dir = os.path.join(args.out_root, f"inmet_{year}")
         extract_zip(zip_path, extract_dir)
 
+        files_to_process = []
         for fname in os.listdir(extract_dir):
             if not fname.lower().endswith(".csv"):
                 continue
@@ -226,7 +229,19 @@ def main():
                 if code not in allowed_stations:
                     continue
 
-            process_station_file(full_path, args.out_root, year)
+            files_to_process.append(full_path)
+
+        if args.workers > 1:
+            with ProcessPoolExecutor(max_workers=args.workers) as executor:
+                futures = [executor.submit(process_station_file, f, args.out_root, year) for f in files_to_process]
+                for future in as_completed(futures):
+                    try:
+                        future.result()  # força levantar erro se algo der errado
+                    except Exception as e:
+                        print(f"[ERRO] Falha ao processar: {e}")
+        else:
+            for f in files_to_process:
+                process_station_file(f, args.out_root, year)
 
         for var in ["total_precipitation", "2m_air_temperature"]:
             compute_completeness_for_year(year, args.out_root, var)
