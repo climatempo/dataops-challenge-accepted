@@ -44,7 +44,6 @@ def download_zip(year: int, out_dir: str):
     response = session.get(url, stream=True, timeout=60)
     response.raise_for_status()
     
-    
     with open(zip_path, "wb") as f:
        for chunk in response.iter_content(chunk_size=1024*1024):
            if chunk:
